@@ -1,0 +1,133 @@
+server:
+  port: 8080
+  # SSE 长连接需要较长的空闲超时，默认值在高并发下容易提前断开
+  tomcat:
+    connection-timeout: 60s
+
+spring:
+  application:
+    name: ai-kb-platform
+
+  # ============ 数据源 ============
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:ai_kb}
+    username: ${PG_USER:postgres}
+    password: ${PG_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # 连接池上限按"问答长事务少、短查询多"的场景设置，不是越大越好
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ============ 数据库版本管理 ============
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    # 生产环境禁止 clean，这里显式关闭，防止误操作清库
+    clean-disabled: true
+
+  # ============ Redis ============
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  # ============ 文件上传 ============
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+  # ============ Spring AI ============
+  ai:
+    openai:
+      # 未配置真实 Key 时用占位符，保证应用能启动并完成建表；
+      # 真正的模型调用会失败，这是预期行为，便于先验证其他链路
+      api-key: ${OPENAI_API_KEY:sk-dev-placeholder}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          # 可换成任意 OpenAI 兼容模型：deepseek-chat / qwen-plus / doubao-*
+          model: ${CHAT_MODEL:gpt-4o-mini}
+          # 知识库问答要"忠实于资料"，温度越低越不容易自由发挥
+          temperature: 0.3
+      embedding:
+        options:
+          # 更换 embedding 模型时，必须同步修改下方 dimensions 与 kb.embedding.dimension，
+          # 否则写入向量时会报维度不匹配
+          model: ${EMBEDDING_MODEL:text-embedding-3-small}
+    vectorstore:
+      pgvector:
+        # HNSW 在数据量 50 万以内查询延迟稳定，优于 IVFFlat
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        # 必须与 embedding 模型实际输出维度一致
+        dimensions: ${EMBEDDING_DIM:1536}
+        # 开启后首次启动会自动建 vector_store 表与索引
+        initialize-schema: true
+        table-name: vector_store
+        # 批量写入上限，数值过大会撑爆一次请求体
+        max-document-batch-size: 100
+
+# ============ 业务配置 ============
+kb:
+  jwt:
+    # 【安全提示】生产环境必须通过环境变量 KB_JWT_SECRET 覆盖，
+    # 且长度不少于 32 字节；此处的默认值仅供本地开发使用
+    secret: ${KB_JWT_SECRET:local-dev-secret-please-change-in-production-32bytes}
+    expire-hours: 12
+  crypto:
+    # 模型 API Key 的落库加密口令，生产必须通过 KB_CRYPTO_SECRET 覆盖。
+    # 更换口令会导致已存的密钥无法解密，只能重新录入
+    secret: ${KB_CRYPTO_SECRET:local-dev-crypto-secret-change-in-production}
+  storage:
+    # 本地文件存储根目录，后续可替换为 MinIO / OSS
+    root: ${KB_STORAGE_ROOT:./data/files}
+  embedding:
+    # 仅用于前端展示与排查，实际模型由 spring.ai.openai.embedding 决定
+    model-name: ${EMBEDDING_MODEL:text-embedding-3-small}
+    dimension: ${EMBEDDING_DIM:1536}
+  retrieval:
+    # 混合检索：向量召回（语义）+ 关键词召回（型号/错误码等精确匹配），RRF 融合
+    hybrid-enabled: true
+    # 向量权重高于关键词：语义相关是主诉求，关键词分支负责补齐精确匹配
+    vector-weight: 0.6
+    keyword-weight: 0.4
+    # RRF 常数，取 60 为业界经验值：避免某一路排第一就直接锁定结果
+    rrf-k: 60
+    # 融合前每路多召回几倍，否则两路重叠后凑不满 topK
+    recall-factor: 3
+    # 中文按二元切分，召回偏宽；纯关键词命中需超过该分数才允许进入上下文
+    min-keyword-score: 0.25
+
+# ============ 日志 ============
+logging:
+  level:
+    root: info
+    com.zhanglang.kb: debug
+    # 打开 MyBatis SQL 日志，便于开发阶段核对生成的 SQL
+    com.zhanglang.kb.rag.mapper: debug
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# ============ 监控端点 ============
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

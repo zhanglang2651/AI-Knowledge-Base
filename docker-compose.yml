@@ -1,0 +1,85 @@
+services:
+  # ---------------------------------------------------------------------
+  # PostgreSQL + pgvector
+  # 必须用 pgvector/pgvector 镜像，官方 postgres 镜像不含 vector 扩展，
+  # 启动 Flyway 时会报 "extension vector is not available"
+  # ---------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-kb-postgres
+    environment:
+      POSTGRES_DB: ai_kb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # 中文排序与全文检索需要正确的 locale
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 应用启动依赖数据库就绪，用 pg_isready 而不是 sleep，避免启动竞态
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_kb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # Redis：缓存 + 会话上下文 + 文档解析任务队列（Stream）
+  # ---------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ai-kb-redis
+    # 开启 AOF：文档解析任务存在 Stream 里，不持久化会因重启丢任务
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # 后端应用
+  # 首次启动前先执行 mvn package 生成 jar（见 README）
+  # ---------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-kb-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DB: ai_kb
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # 以下三项必须从宿主机环境注入，不要写进镜像
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
+      KB_JWT_SECRET: ${KB_JWT_SECRET}
+      # 容器内路径，映射到下面的 volume
+      KB_STORAGE_ROOT: /app/data/files
+    ports:
+      - "8080:8080"
+    volumes:
+      # 文档持久化，容器重建不丢文件
+      - fileData:/app/data/files
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  fileData:

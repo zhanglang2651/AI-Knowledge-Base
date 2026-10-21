@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.zhanglang</groupId>
+        <artifactId>ai-kb-platform</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>kb-admin</artifactId>
+    <packaging>jar</packaging>
+    <description>启动层：应用入口、配置、数据库版本化脚本</description>
+
+    <dependencies>
+        <!-- 依赖 kb-rag，间接引入 kb-common，依赖方向严格单向 -->
+        <dependency>
+            <groupId>com.zhanglang</groupId>
+            <artifactId>kb-rag</artifactId>
+        </dependency>
+
+        <!--
+            Flyway：数据库版本化管理。
+            不用 JPA 的 ddl-auto 自动建表 —— 它无法表达索引、注释、扩展，
+            也无法在团队协作时保证每个人的库结构一致。
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <!--
+            Flyway 10 起把各数据库方言拆成独立模块，
+            操作 PostgreSQL 必须额外引入此依赖，否则启动报
+            "Unsupported Database: PostgreSQL"。
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- 健康检查端点，用于部署后确认服务真正就绪 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--
+            H2：仅用于本地免安装运行（h2 profile）。
+            PostgreSQL/pgvector 仍是生产方案，H2 只做开发期的替代，
+            目的是在无法启动 Docker 的环境下也能验证业务链路。
+            runtime 作用域：代码中不直接引用 H2 的类，只由驱动加载。
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 打成可执行 jar，Docker 部署时直接 java -jar -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,126 @@
+# =====================================================================
+# h2 profile：无需 Docker / PostgreSQL / Redis 的本地开发模式
+# 启动方式：
+#   java -jar kb-admin.jar --spring.profiles.active=h2
+# 或 mvn -pl kb-admin -am spring-boot:run -Dspring-boot.run.profiles=h2
+#
+# 与 prod 的差异（仅这三处，业务代码完全一致）：
+#   1. 数据库 PostgreSQL → H2（内存）
+#   2. 向量库 pgvector → 内存向量库 SimpleVectorStore
+#   3. 文档解析队列 Redis Stream → 本地线程池
+# =====================================================================
+
+server:
+  port: 8080
+
+spring:
+  # ============ 排除 pgvector 自动配置 ============
+  # 单靠 spring.ai.vectorstore.pgvector.enabled=false 不足以阻止它初始化：
+  # 该自动配置的 enabled 条件在不同小版本间语义有差异，最稳的做法是直接排除这个类。
+  # 排除后 VectorStore 由 AiConfig#inMemoryVectorStore 提供。
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+  # ============ H2 数据库（文件模式，重启不丢数据）============
+  datasource:
+    # MODE=PostgreSQL 让 H2 兼容 PostgreSQL 方言，MyBatis-Plus 生成的 SQL 可直接复用
+    # 文件模式（jdbc:h2:file:）而非内存模式：否则每次重启服务，用户、知识库、文档全部清空，
+    # 调试时反复重建数据非常浪费时间
+    # AUTO_SERVER=TRUE 允许同一台机器上多个进程同时连（IDE 里看数据时会用到）
+    url: jdbc:h2:file:./data/h2/ai_kb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+  # 启动时执行建表脚本。H2 不支持 PostgreSQL 的 COMMENT ON / 扩展语法，
+  # 因此单独维护一份 db/h2/schema.sql，不复用 Flyway 的 V1 脚本
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/h2/schema.sql
+
+  # h2 模式不使用 Flyway：
+  # 1) V1 脚本是 PostgreSQL 专用语法（vector 扩展、COMMENT ON、jsonb）
+  # 2) 表结构已由上面的 schema.sql 建立
+  flyway:
+    enabled: false
+
+  # ============ Redis（本模式下不使用，但 Starter 仍会自动配置连接工厂）============
+  # 不做任何操作就不会真正建立连接，启动不受影响
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 1s
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+  # ============ Spring AI：两个独立供应商 ============
+  # 生成用 agnes（无 embedding 能力），向量化用硅基流动 bge-m3（1024 维）
+  ai:
+    openai:
+      # 全局默认指向 embedding 供应商，chat 单独覆盖
+      api-key: ${EMBEDDING_API_KEY:sk-please-set-embedding-key}
+      base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn}
+      embedding:
+        options:
+          model: ${EMBEDDING_MODEL:BAAI/bge-m3}
+      chat:
+        # chat 单独覆盖 base-url 与 api-key，指向 agnes
+        api-key: ${CHAT_API_KEY:sk-please-set-chat-key}
+        base-url: ${CHAT_BASE_URL:https://apihub.agnes-ai.com}
+        options:
+          model: ${CHAT_MODEL:agnes-3.0-flash}
+          temperature: 0.3
+    vectorstore:
+      pgvector:
+        # 关键：关闭 pgvector 自动配置，否则它会尝试连 PostgreSQL 并创建 vector_store 表
+        # 关闭后由 AiConfig 中的 inMemoryVectorStore 兜底
+        enabled: false
+
+# ============ 业务配置 ============
+kb:
+  jwt:
+    secret: ${KB_JWT_SECRET:local-dev-secret-change-me-32bytes-minimum-length}
+    expire-hours: 12
+  crypto:
+    # 模型 API Key 的落库加密口令。
+    # 生产必须通过环境变量覆盖；更换口令会导致已存的密钥无法解密，需要重新录入
+    secret: ${KB_CRYPTO_SECRET:local-dev-crypto-secret-change-in-production}
+  storage:
+    root: ${KB_STORAGE_ROOT:./data/files}
+  embedding:
+    model-name: ${EMBEDDING_MODEL:BAAI/bge-m3}
+    # bge-m3 输出 1024 维，与 pgvector 版保持一致
+    dimension: 1024
+  queue:
+    # 关闭 Redis Stream 队列，改为本地线程池异步解析
+    enabled: false
+  vector:
+    # 标记当前向量库是易失的（内存），启动时触发 EphemeralVectorRebuildRunner
+    # 把已完成的文档重新向量化，避免"文档显示完成但检索不到"的状态不一致
+    ephemeral: true
+
+logging:
+  level:
+    root: info
+    com.zhanglang.kb: debug
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  health:
+    redis:
+      # 本模式不依赖 Redis，健康检查不要因为连不上而报 DOWN
+      enabled: false

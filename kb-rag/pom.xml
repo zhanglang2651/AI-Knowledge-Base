@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.zhanglang</groupId>
+        <artifactId>ai-kb-platform</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>kb-rag</artifactId>
+    <packaging>jar</packaging>
+    <description>核心层：知识库管理、文档解析入库、RAG 检索问答</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.zhanglang</groupId>
+            <artifactId>kb-common</artifactId>
+        </dependency>
+
+        <!-- ORM：注意必须用 spring-boot4 专用 starter -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+
+        <!-- Redis：缓存会话上下文 + Redis Stream 异步任务队列 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Spring AI：OpenAI 兼容协议，可指向 DeepSeek / 通义 / 豆包 / Ollama -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!-- Spring AI：pgvector 向量存储，自动建表并创建 HNSW 索引 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL 驱动，runtime 即可，代码中不直接引用驱动类 -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            Apache Tika：统一文档解析入口。
+            tika-core 只含 API，tika-parsers-standard-package 才带 PDF/Office 解析实现，
+            两者必须同时引入，否则运行期报 "No parser could be found"。
+        -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+
+        <!--
+            只引入 spring-security-crypto 而非整个 spring-boot-starter-security：
+            本项目只需要 BCrypt 密码编码器，不需要 Security 的过滤器链。
+            引入完整 Starter 会默认开启全站鉴权，反而增加配置负担。
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!--
+            测试依赖：JUnit 5 + Mockito + AssertJ 由 spring-boot-starter-test 统一提供。
+            本项目测试以纯单元测试为主（不启动 Spring 上下文），
+            需要外部依赖的分块器、检索器全部通过构造函数注入，天然可测。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        父 POM：统一依赖版本，禁止子模块自行指定版本号。
+        依据《阿里巴巴 Java 开发手册》工程结构规约：二方库依赖必须显式声明版本，
+        不允许使用 open range（如 [1.0,2.0)），避免构建结果不可复现。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.zhanglang</groupId>
+    <artifactId>ai-kb-platform</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>ai-kb-platform</name>
+    <description>AI 知识库问答平台 - Java 实现</description>
+
+    <modules>
+        <module>kb-common</module>
+        <module>kb-rag</module>
+        <module>kb-admin</module>
+    </modules>
+
+    <properties>
+        <!-- JDK 17 为 Spring Boot 4 的最低基线，本机已安装 Temurin 17，无需升级 -->
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <spring-ai.version>2.0.1</spring-ai.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <jjwt.version>0.12.6</jjwt.version>
+        <tika.version>2.9.2</tika.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring AI BOM：统一 ChatModel / EmbeddingModel / VectorStore 相关版本 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--
+                MyBatis-Plus 针对 Spring Boot 4 的专用 Starter。
+                注意不要误用 mybatis-plus-boot-starter（那是 Boot 3 版本，在 Boot 4 下会因
+                mybatis-spring 版本不匹配导致启动失败）。
+            -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- 项目内部模块 -->
+            <dependency>
+                <groupId>com.zhanglang</groupId>
+                <artifactId>kb-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zhanglang</groupId>
+                <artifactId>kb-rag</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!--
+                    编译参数：-parameters 让 Spring 能通过反射拿到方法参数名，
+                    MyBatis 多参数映射和 Spring MVC 参数绑定都依赖它，缺失会导致运行期诡异错误。
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <compilerArgs>
+                            <arg>-parameters</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

@@ -1,0 +1,47 @@
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.log
+build.log
+
+# ===== IDE =====
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# ===== 运行时数据 =====
+# 上传的文档，属于用户数据，绝不入库
+data/
+# 运行时日志
+logs/
+# 本地构建工具（Maven 便携版）
+../.tools/
+
+# ===== 敏感配置 =====
+# 包含真实 API Key / 数据库密码的本地配置文件
+application-local.yml
+application-prod.yml
+.env
+*.env.local
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== 前端 (kb-web) =====
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+install.log
+install2.log
+npm-debug.log*
+
